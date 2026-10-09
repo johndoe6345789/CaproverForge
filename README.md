@@ -44,7 +44,7 @@ GitHub Actions builds the APKs on every push and pull request. Download them fro
 
 ## Building locally
 
-Requires JDK 17+ and an Android SDK with `platforms;android-37.0` and `build-tools;37.0.0` (point `sdk.dir` in `local.properties`, or `ANDROID_HOME`, at it).
+Requires JDK 21 (JDK 17 builds the app, but the Robolectric tests need 21) and an Android SDK with `platforms;android-37.0` and `build-tools;37.0.0` (point `sdk.dir` in `local.properties`, or `ANDROID_HOME`, at it).
 
 ```bash
 ./gradlew assembleDebug          # debug APK
