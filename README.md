@@ -37,10 +37,24 @@ CapRover serves NetData at `/net-data-monitor/` and only accepts the `captainCoo
 
 ## Download
 
-GitHub Actions builds the APKs on every push and pull request. Download them from the [Actions tab](../../actions):
-- `app-debug-android17`: installable debug build.
-- `app-release-android17`: minified release build. It is **unsigned**, so sign it before installing.
-- `ui-screenshots`: screenshots recorded by the UI tests.
+Every commit to `main` publishes a new release on the [Releases page](../../releases/latest), named `CaproverForge 2.1.<build>`:
+- `CaproverForge-2.1.<build>-debug.apk`: install this one. Every release is signed with the same key, so a new one installs over the old one and keeps your sign-in.
+- `CaproverForge-2.1.<build>.apk`: a minified release build, published only when a release signing key is configured (see below).
+
+Pull requests build the same APKs as workflow artifacts in the [Actions tab](../../actions), along with `ui-screenshots`, but don't publish a release.
+
+### Signing release builds (optional)
+
+The debug APKs are signed with `app/debug.keystore`. That key is committed on purpose: it's a throwaway key, like the debug key Android Studio generates, and keeping it fixed is what lets each release install over the previous one. To also publish a release build signed with your own key, add these repository secrets (Settings → Secrets and variables → Actions):
+
+| Secret | Value |
+|---|---|
+| `RELEASE_KEYSTORE_BASE64` | `base64 -w0 my-release.jks` |
+| `RELEASE_STORE_PASSWORD` | keystore password |
+| `RELEASE_KEY_ALIAS` | key alias |
+| `RELEASE_KEY_PASSWORD` | key password |
+
+Keep a backup of that keystore: Android only accepts updates signed with the same key.
 
 ## Building locally
 
@@ -48,7 +62,7 @@ Requires JDK 21 (JDK 17 builds the app, but the Robolectric tests need 21) and a
 
 ```bash
 ./gradlew assembleDebug          # debug APK
-./gradlew assembleRelease        # minified, unsigned release APK
+./gradlew assembleRelease        # minified release APK (unsigned unless RELEASE_KEYSTORE is set)
 ./gradlew testDebugUnitTest      # unit, API and UI flow tests (Robolectric, no device needed)
 ./gradlew recordRoborazziDebug   # same tests, also writes screenshots to app/screenshots/
 ./gradlew lintDebug
