@@ -33,6 +33,7 @@ import com.caproverforge.ui.server.NodesScreen
 import com.caproverforge.ui.server.PasswordScreen
 import com.caproverforge.ui.server.ProjectsScreen
 import com.caproverforge.ui.server.RegistriesScreen
+import com.caproverforge.ui.server.ServerStatsScreen
 import com.caproverforge.ui.server.UpdateScreen
 import kotlinx.serialization.Serializable
 
@@ -51,6 +52,7 @@ import kotlinx.serialization.Serializable
 @Serializable object PasswordRoute
 @Serializable object UpdateRoute
 @Serializable object AppearanceRoute
+@Serializable object ServerStatsRoute
 
 val LocalContainer = staticCompositionLocalOf<AppContainer> { error("AppContainer not provided") }
 
@@ -133,11 +135,18 @@ fun AppRoot(container: AppContainer) {
             composable<DiskCleanupRoute> { DiskCleanupScreen(navigator::back) }
             composable<DomainRoute> { DomainScreen(navigator::back) }
             composable<NginxRoute> { NginxScreen(navigator::back) }
-            composable<MonitoringRoute> { MonitoringScreen(navigator::back) }
+            composable<MonitoringRoute> { MonitoringScreen(navigator::back, onOpenStats = { navigator.open(ServerStatsRoute) }) }
             composable<ProjectsRoute> { ProjectsScreen(navigator::back) }
             composable<PasswordRoute> { PasswordScreen(navigator::back) }
             composable<UpdateRoute> { UpdateScreen(navigator::back) }
             composable<AppearanceRoute> { AppearanceScreen(navigator::back) }
+            composable<ServerStatsRoute> {
+                ServerStatsScreen(
+                    onBack = navigator::back,
+                    onOpenMonitoring = { navigator.open(MonitoringRoute) },
+                    onSignInAgain = navigator::signOut,
+                )
+            }
         }
     }
 }

@@ -167,3 +167,31 @@ class ModelsTest {
         assertFalse(AppNames.isValid("api-"))
     }
 }
+
+class NetDataParserTest {
+    private fun json(s: String) = ApiJson.parseToJsonElement(s)
+
+    @Test fun sumsCpuDimensionsExceptIdleAndSortsByTime() {
+        val series = NetDataParser.sum(json("""{"labels":["time","user","system","idle"],"data":[[20,3,1,96],[10,1,1,98]]}"""))
+        assertEquals(listOf(10L, 20L), series.times)
+        assertEquals(listOf(2.0, 4.0), series.values)
+    }
+
+    @Test fun memoryPercentOfAllDimensions() {
+        val (pct, used, total) = NetDataParser.memory(json("""{"labels":["time","free","used","cached","buffers"],"data":[[1,1000,2000,800,200]]}"""))
+        assertEquals(50.0, pct.last!!, 0.001)
+        assertEquals(2000.0, used!!, 0.001)
+        assertEquals(4000.0, total!!, 0.001)
+    }
+
+    @Test fun diskUsage() {
+        val disk = NetDataParser.disk(json("""{"labels":["time","avail","used","reserved_for_root"],"data":[[1,30,60,10]]}"""))!!
+        assertEquals(0.6, disk.fraction, 0.001)
+    }
+
+    @Test fun missingDimensionsAreEmptyNotErrors() {
+        assertTrue(NetDataParser.dimension(json("""{"labels":["time","a"],"data":[[1,2]]}"""), "load1").isEmpty)
+        assertNull(NetDataParser.disk(json("""{"labels":["time"],"data":[]}""")))
+        assertTrue(NetDataParser.sum(json("{}")).isEmpty)
+    }
+}

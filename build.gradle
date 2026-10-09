@@ -1,8 +1,11 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 buildscript {
-    ext.kotlin_version = '2.4.21'
+    ext.kotlin_version = '2.4.20'  // newest release on the Central mirror below
     repositories {
         google()
+        // Google's mirror of Maven Central: avoids Central's rate limits (HTTP 429). Anything it
+        // doesn't have yet (404) falls through to Maven Central itself.
+        maven { url = 'https://maven-central.storage-download.googleapis.com/maven2/' }
         mavenCentral()
     }
     dependencies {
@@ -18,6 +21,9 @@ buildscript {
 allprojects {
     repositories {
         google()
+        // Google's mirror of Maven Central: avoids Central's rate limits (HTTP 429). Anything it
+        // doesn't have yet (404) falls through to Maven Central itself.
+        maven { url = 'https://maven-central.storage-download.googleapis.com/maven2/' }
         mavenCentral()
     }
 }

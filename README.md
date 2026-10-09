@@ -10,7 +10,8 @@ It talks to the same REST API (`/api/v2`) as the CapRover web dashboard, so it w
 ## Features
 
 - **Sign in** with your dashboard password (plus a two-factor code if enabled). Only the session token is kept, encrypted with an Android Keystore key. The password is never stored.
-- **Dashboard**: app and instance counts, cluster nodes, live NGINX connections, HTTPS status, builds in progress, recent deployments, and update notices.
+- **Dashboard**: app and instance counts, server health (CPU, memory and disk from NetData), cluster nodes, live NGINX connections, HTTPS status, builds in progress, recent deployments, and update notices.
+- **Server stats**: live CPU, memory, network, load average and disk charts from CapRover's built-in NetData, over 5 min, 1 h, 6 h or 24 h. Touch and drag a chart to read past values.
 - **Apps**: search, filter by project, see status at a glance (running, building, stopped, not deployed, last build failed), and create new apps.
 - **App details**
   - *Status*: deployed version and image, scale instances up and down, endpoints, description, project and tags.
@@ -24,6 +25,10 @@ It talks to the same REST API (`/api/v2`) as the CapRover web dashboard, so it w
 - Light and dark themes, plus optional Material You wallpaper colours.
 
 Settings changes are collected into a draft and applied with one **Save & restart**, the same as the web dashboard.
+
+## Server stats and NetData
+
+CapRover serves NetData at `/net-data-monitor/` and only accepts the `captainCookieAuth` cookie it sets at sign-in, not the API token. The app keeps that cookie (encrypted, like the token). If you signed in with an earlier version of the app, sign out and back in once to see stats. Turn NetData on under **Server → Monitoring**.
 
 ## Requirements
 
@@ -49,7 +54,9 @@ Requires JDK 17+ and an Android SDK with `platforms;android-37.0` and `build-too
 ./gradlew lintDebug
 ```
 
-Toolchain: Android Gradle Plugin 9.4.1, Gradle 9.6.0, Kotlin 2.4.21, Compose BOM 2026.09.00.
+Toolchain: Android Gradle Plugin 9.4.1, Gradle 9.6.0, Kotlin 2.4.20, Compose BOM 2026.09.00.
+
+Dependencies are fetched from Google's mirror of Maven Central (`maven-central.storage-download.googleapis.com`) first, with Maven Central as the fallback. That avoids Central's rate limits (HTTP 429), which shared CI runners hit. Robolectric downloads its Android runtime from the same mirror.
 
 ## How it's built
 

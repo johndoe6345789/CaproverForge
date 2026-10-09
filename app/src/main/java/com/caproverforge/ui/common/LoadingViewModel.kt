@@ -14,7 +14,7 @@ import kotlinx.coroutines.launch
 
 sealed interface Load<out T> {
     data object Loading : Load<Nothing>
-    data class Failed(val message: String) : Load<Nothing>
+    data class Failed(val message: String, val status: Int? = null) : Load<Nothing>
     data class Ready<T>(val data: T) : Load<T>
 }
 
@@ -55,7 +55,8 @@ abstract class LoadingViewModel<T> : ViewModel() {
             } catch (e: CancellationException) {
                 throw e
             } catch (e: Exception) {
-                if (state is Load.Ready) _messages.tryEmit(e.userMessage()) else state = Load.Failed(e.userMessage())
+                if (state is Load.Ready) _messages.tryEmit(e.userMessage())
+                else state = Load.Failed(e.userMessage(), (e as? CapRoverException)?.status)
             } finally {
                 refreshing = false
             }

@@ -65,7 +65,7 @@ class AppScreenshotTest {
 
     @After fun tearDown() = server.close()
 
-    private fun signedIn() = container.sessionStore.save(server.url("/").toString().trimEnd('/'), fake.token)
+    private fun signedIn() = container.sessionStore.save(server.url("/").toString().trimEnd('/'), fake.token, fake.monitorCookie)
 
     private fun launch(theme: ThemeMode = ThemeMode.Light) {
         compose.setContent {
@@ -192,6 +192,38 @@ class AppScreenshotTest {
         compose.onNodeWithText("Cluster nodes").performClick()
         waitForText("captain-01")
         shot("15_nodes")
+    }
+
+    @Test fun serverStats() {
+        signedIn()
+        launch()
+        tab("Server")
+        waitForText("Server stats")
+        compose.onNodeWithText("Server stats").performClick()
+        waitForText("Load average")
+        waitForText("captain-01")
+        shot("16_server_stats")
+    }
+
+    @Test fun serverStatsDark() {
+        signedIn()
+        launch(ThemeMode.Dark)
+        tab("Server")
+        waitForText("Server stats")
+        compose.onNodeWithText("Server stats").performClick()
+        waitForText("Load average")
+        shot("17_server_stats_dark")
+    }
+
+    @Test fun serverStatsWhenMonitoringOff() {
+        fake.netDataRunning = false
+        signedIn()
+        launch()
+        tab("Server")
+        waitForText("Server stats")
+        compose.onNodeWithText("Server stats").performClick()
+        waitForText("Monitoring is off")
+        shot("18_server_stats_off")
     }
 
     private fun androidx.compose.ui.test.junit4.ComposeContentTestRule.onNodeWithContentDescriptionSafe(desc: String) {

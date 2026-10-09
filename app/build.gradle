@@ -36,6 +36,8 @@ android {
         unitTests {
             includeAndroidResources = true
             all {
+                // Robolectric downloads its Android runtime itself; use the same Central mirror.
+                systemProperty 'robolectric.dependency.repo.url', 'https://maven-central.storage-download.googleapis.com/maven2'
                 // Robolectric reaches into JDK internals (FileDescriptor access) on JDK 17+.
                 jvmArgs '--add-exports=java.base/jdk.internal.access=ALL-UNNAMED',
                     '--add-opens=java.base/jdk.internal.access=ALL-UNNAMED',

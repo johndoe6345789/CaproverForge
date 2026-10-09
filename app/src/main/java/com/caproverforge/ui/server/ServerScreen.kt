@@ -20,6 +20,7 @@ import androidx.compose.material.icons.outlined.Code
 import androidx.compose.material.icons.outlined.CleaningServices
 import androidx.compose.material.icons.outlined.Folder
 import androidx.compose.material.icons.outlined.Hub
+import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Inventory
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.MonitorHeart
@@ -74,6 +75,7 @@ import com.caproverforge.ui.navigation.NodesRoute
 import com.caproverforge.ui.navigation.PasswordRoute
 import com.caproverforge.ui.navigation.ProjectsRoute
 import com.caproverforge.ui.navigation.RegistriesRoute
+import com.caproverforge.ui.navigation.ServerStatsRoute
 import com.caproverforge.ui.navigation.UpdateRoute
 import com.caproverforge.ui.navigation.containerViewModel
 import kotlinx.coroutines.flow.MutableSharedFlow
@@ -134,6 +136,7 @@ fun ServerScreen(navigator: Navigator) {
                 item { SectionLabel("Infrastructure") }
                 item {
                     MenuGroup(
+                        MenuEntry("Server stats", "Live CPU, memory, network and disk", Icons.Outlined.Insights) { navigator.open(ServerStatsRoute) },
                         MenuEntry("Cluster nodes", "Servers in your Docker swarm", Icons.Outlined.Hub) { navigator.open(NodesRoute) },
                         MenuEntry("Domain & HTTPS", "Root domain, certificates, force HTTPS", Icons.Outlined.Language) { navigator.open(DomainRoute) },
                         MenuEntry("NGINX", "Base and dashboard load-balancer config", Icons.Outlined.Code) { navigator.open(NginxRoute) },

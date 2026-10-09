@@ -28,8 +28,8 @@ class CapRoverRepository(
     // region Session
     suspend fun login(serverInput: String, password: String, otp: String?) {
         val baseUrl = ServerAddress.normalize(serverInput)
-        val token = api.login(baseUrl, password, otp)
-        sessionStore.save(baseUrl, token)
+        val result = api.login(baseUrl, password, otp)
+        sessionStore.save(baseUrl, result.token, result.monitorCookie)
     }
 
     fun logout() = sessionStore.clear()

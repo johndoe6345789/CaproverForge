@@ -14,6 +14,7 @@ import kotlinx.serialization.json.intOrNull
 import kotlinx.serialization.json.jsonObject
 import kotlinx.serialization.json.jsonPrimitive
 import kotlinx.serialization.json.put
+import okhttp3.Headers
 import okhttp3.HttpUrl
 import okhttp3.HttpUrl.Companion.toHttpUrlOrNull
 import okhttp3.MediaType.Companion.toMediaType
@@ -42,6 +43,9 @@ class CapRoverException(val status: Int, message: String) : Exception(message) {
         const val OTP_REQUIRED = 1114
         const val NETWORK = -1
         const val HTTP = -2
+        /** NetData needs the login cookie, which sessions from before this version don't have. */
+        const val MONITOR_SIGN_IN = -3
+        const val MONITOR_OFF = -4
     }
 }
 
@@ -65,7 +69,9 @@ class CapRoverApi(
 
     private val jsonType = "application/json; charset=utf-8".toMediaType()
 
-    suspend fun login(baseUrl: String, password: String, otpToken: String?): String {
+    data class LoginResult(val token: String, val monitorCookie: String?)
+
+    suspend fun login(baseUrl: String, password: String, otpToken: String?): LoginResult {
         val body = buildJsonObject {
             put("password", password)
             if (!otpToken.isNullOrBlank()) put("otpToken", otpToken.trim())
@@ -75,9 +81,16 @@ class CapRoverApi(
             .header(NAMESPACE_HEADER, NAMESPACE)
             .post(body.toString().toRequestBody(jsonType))
             .build()
-        val data = execute(request, authenticated = false)
-        return data.jsonObject["token"]?.jsonPrimitive?.contentOrNull
+        var monitorCookie: String? = null
+        val data = execute(request, authenticated = false) { headers ->
+            monitorCookie = headers.values("Set-Cookie")
+                .firstOrNull { it.startsWith("$MONITOR_COOKIE=") }
+                ?.substringAfter('=')?.substringBefore(';')
+                ?.takeIf { it.isNotBlank() }
+        }
+        val token = data.jsonObject["token"]?.jsonPrimitive?.contentOrNull
             ?: throw CapRoverException(CapRoverException.HTTP, "The server did not return a session token.")
+        return LoginResult(token, monitorCookie)
     }
 
     suspend fun get(path: String, query: Map<String, String> = emptyMap()): JsonElement {
@@ -102,6 +115,40 @@ class CapRoverApi(
         return execute(authed(session, url(session.baseUrl, path)).post(body).build())
     }
 
+    /**
+     * GET from NetData through CapRover's proxy (`/net-data-monitor/api/v1/...`), authenticated with
+     * the login cookie. Unlike API calls, a rejected cookie doesn't end the app session.
+     */
+    suspend fun netData(path: String, query: Map<String, String> = emptyMap()): JsonElement {
+        val session = requireSession()
+        val cookie = session.monitorCookie
+            ?: throw CapRoverException(CapRoverException.MONITOR_SIGN_IN, "Sign in again to load server stats.")
+        val url = (session.baseUrl.trimEnd('/') + NETDATA_PATH + path).toHttpUrlOrNull()?.newBuilder()?.apply {
+            query.forEach { (k, v) -> addQueryParameter(k, v) }
+        }?.build() ?: throw CapRoverException(CapRoverException.NETWORK, "Invalid server address.")
+        val request = Request.Builder().url(url).header("Cookie", "$MONITOR_COOKIE=$cookie").get().build()
+        return withContext(Dispatchers.IO) {
+            val (code, text) = try {
+                http.newCall(request).execute().use { it.code to it.body.string() }
+            } catch (e: IOException) {
+                throw CapRoverException(CapRoverException.NETWORK, "Network error: ${e.message ?: "connection failed"}")
+            }
+            if (code == 500 && text.contains("not running", ignoreCase = true)) {
+                throw CapRoverException(CapRoverException.MONITOR_OFF, "NetData isn't running. Turn it on under Server → Monitoring.")
+            }
+            if (code !in 200..299) throw CapRoverException(CapRoverException.HTTP, httpErrorMessage(code, text))
+            val json = runCatching { ApiJson.parseToJsonElement(text) }.getOrElse {
+                throw CapRoverException(CapRoverException.HTTP, "Unexpected response from NetData.")
+            }
+            // CapRover answers in its own envelope when the cookie is missing or expired.
+            val status = (json as? JsonObject)?.get("status")?.jsonPrimitive?.intOrNull
+            if (status != null && json.containsKey("description")) {
+                throw CapRoverException(CapRoverException.MONITOR_SIGN_IN, "Sign in again to load server stats.")
+            }
+            json
+        }
+    }
+
     fun buildPart(name: String, fileName: String, body: RequestBody): MultipartBody.Part =
         MultipartBody.Part.createFormData(name, fileName, body)
 
@@ -123,7 +170,11 @@ class CapRoverApi(
             ?: throw CapRoverException(CapRoverException.NETWORK, "“$baseUrl” is not a valid server address.")
     }
 
-    private suspend fun execute(request: Request, authenticated: Boolean = true): JsonElement =
+    private suspend fun execute(
+        request: Request,
+        authenticated: Boolean = true,
+        onHeaders: (Headers) -> Unit = {},
+    ): JsonElement =
         withContext(Dispatchers.IO) {
             val text = try {
                 http.newCall(request).execute().use { response ->
@@ -131,6 +182,7 @@ class CapRoverApi(
                     if (!response.isSuccessful) {
                         throw CapRoverException(CapRoverException.HTTP, httpErrorMessage(response.code, body))
                     }
+                    onHeaders(response.headers)
                     body
                 }
             } catch (e: CapRoverException) {
@@ -187,5 +239,7 @@ class CapRoverApi(
         private const val TOKEN_HEADER = "x-captain-auth"
         private const val NAMESPACE_HEADER = "x-namespace"
         const val NAMESPACE = "captain"
+        const val MONITOR_COOKIE = "captainCookieAuth"
+        const val NETDATA_PATH = "/net-data-monitor"
     }
 }

@@ -16,18 +16,21 @@ class FakeCapRover : Dispatcher() {
     var token = "demo-token"
     var password = "hunter2"
     var expireToken = false
+    var monitorCookie = "monitor-cookie-abc"
+    var netDataRunning = true
 
     private val now = Instant.now()
     private fun ago(minutes: Long) = now.minus(minutes, ChronoUnit.MINUTES).toString()
 
     override fun dispatch(request: RecordedRequest): MockResponse {
         val url = request.url
+        if (url.encodedPath.startsWith("/net-data-monitor/")) return netData(request)
         val path = url.encodedPath.removePrefix("/api/v2")
         val body = request.body?.utf8().orEmpty()
         requests += "${request.method} $path" to body
 
         if (path == "/login") {
-            return if (body.contains("\"password\":\"$password\"")) ok("""{"token":"$token"}""")
+            return if (body.contains("\"password\":\"$password\"")) ok("""{"token":"$token"}""", setCookie = "captainCookieAuth=$monitorCookie; Path=/")
             else envelope(1105, "Password is incorrect.", "{}")
         }
         if (expireToken || request.headers["x-captain-auth"] != token) {
@@ -74,12 +77,13 @@ class FakeCapRover : Dispatcher() {
         }
     }
 
-    private fun ok(data: String) = envelope(100, "OK", data)
+    private fun ok(data: String, setCookie: String? = null) = envelope(100, "OK", data, setCookie)
 
-    private fun envelope(status: Int, description: String, data: String) =
+    private fun envelope(status: Int, description: String, data: String, setCookie: String? = null) =
         MockResponse.Builder()
             .code(200)
             .addHeader("Content-Type", "application/json")
+            .apply { if (setCookie != null) addHeader("Set-Cookie", setCookie) }
             .body("""{"status":$status,"description":"$description","data":$data}""")
             .build()
 
@@ -155,4 +159,48 @@ class FakeCapRover : Dispatcher() {
           "instructions":{"start":"WordPress needs a **database**. This template creates MariaDB alongside it.","end":"Visit https://${'$'}${'$'}cap_appname.${'$'}${'$'}cap_root_domain to finish setup."},
           "variables":[{"id":"${'$'}${'$'}cap_wp_version","label":"WordPress version","defaultValue":"6.8","description":"Docker Hub tag","validRegex":"/^([^\\s^\\/])+${'$'}/"},
             {"id":"${'$'}${'$'}cap_db_pass","label":"Database password","defaultValue":"${'$'}${'$'}cap_gen_random_hex(16)"}]}}}"""
+
+    /** CapRover's NetData proxy: cookie auth, then NetData v1 JSON. */
+    private fun netData(request: RecordedRequest): MockResponse {
+        val cookie = request.headers["Cookie"].orEmpty()
+        if (!cookie.contains("captainCookieAuth=$monitorCookie")) return envelope(1106, "Auth token corrupted", "{}")
+        if (!netDataRunning) {
+            return MockResponse.Builder().code(500).body("Something went wrong... err:  \n NetData is not running! Are you sure you have started it?").build()
+        }
+        val path = request.url.encodedPath.removePrefix("/net-data-monitor")
+        if (path == "/api/v1/info") {
+            return json("""{"version":"v1.34.1","os_name":"Ubuntu","os_version":"24.04.3 LTS","cores_total":"4","ram_total":"8323616768","mirrored_hosts":["captain-01"]}""")
+        }
+        val chart = request.url.queryParameter("chart")
+        val points = request.url.queryParameter("points")?.toIntOrNull() ?: 60
+        val span = -(request.url.queryParameter("after")?.toLongOrNull() ?: -300)
+        val end = Instant.now().epochSecond
+        fun rows(dims: List<String>, value: (Int, Int) -> Double): MockResponse {
+            val data = (0 until points).joinToString(",") { i ->
+                val t = end - span + (span * i / maxOf(points - 1, 1))
+                "[" + (listOf("$t") + dims.indices.map { d -> "%.3f".format(java.util.Locale.ROOT, value(i, d)) }).joinToString(",") + "]"
+            }
+            return json("""{"labels":["time",${dims.joinToString(",") { "\"$it\"" }}],"data":[$data]}""")
+        }
+        fun wave(i: Int, period: Double, phase: Double = 0.0) = kotlin.math.sin(i / period + phase)
+        return when (chart) {
+            "system.cpu" -> rows(listOf("user", "system", "iowait")) { i, d ->
+                listOf(18 + 9 * wave(i, 6.0) + if (i in 38..44) 30.0 else 0.0, 6 + 2 * wave(i, 4.0, 1.0), 1.2 + wave(i, 3.0))[d]
+            }
+            "system.ram" -> rows(listOf("free", "used", "cached", "buffers")) { i, d ->
+                listOf(1650 - 40 * wave(i, 9.0), 4380 + 40 * wave(i, 9.0), 1650.0, 258.0)[d]
+            }
+            "system.load" -> rows(listOf("load1", "load5", "load15")) { i, d ->
+                listOf(0.9 + 0.5 * wave(i, 7.0) + if (i in 38..46) 1.4 else 0.0, 0.84, 0.71)[d]
+            }
+            "system.net" -> rows(listOf("received", "sent")) { i, d ->
+                listOf(2400 + 1500 * wave(i, 5.0), 900 + 600 * wave(i, 5.0, 2.0))[d]
+            }
+            "disk_space._" -> rows(listOf("avail", "used", "reserved_for_root")) { _, d -> listOf(31.4, 41.8, 3.9)[d] }
+            else -> MockResponse.Builder().code(400).body("Chart is not found: $chart").build()
+        }
+    }
+
+    private fun json(body: String) =
+        MockResponse.Builder().code(200).addHeader("Content-Type", "application/json").body(body).build()
 }

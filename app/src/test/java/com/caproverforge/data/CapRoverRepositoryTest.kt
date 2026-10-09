@@ -48,7 +48,7 @@ class CapRoverRepositoryTest {
 
     @Test fun loginStoresTokenAndSendsNamespace() = runTest {
         repo.login(baseUrl, fake.password, null)
-        assertEquals(Session(baseUrl, fake.token), sessions.session.value)
+        assertEquals(Session(baseUrl, fake.token, fake.monitorCookie), sessions.session.value)
         val info = repo.captainInfo()
         assertEquals("example.com", info.rootDomain)
         assertTrue(info.hasRootSsl)
@@ -153,5 +153,40 @@ class CapRoverRepositoryTest {
             "$baseUrl/api/v2/downloads/?namespace=captain&downloadToken=tok%2Fen%2B1",
             repo.createBackupUrl(),
         )
+    }
+
+    @Test fun loginKeepsMonitorCookieAndLoadsStats() = runTest {
+        repo.login(baseUrl, fake.password, null)
+        assertEquals(fake.monitorCookie, sessions.session.value?.monitorCookie)
+        val stats = repo.serverStats()
+        assertEquals("captain-01", stats.hostname)
+        assertEquals(4, stats.cores)
+        assertEquals(60, stats.cpuPercent.values.size)
+        assertTrue("cpu is a sum of dimensions", stats.cpuPercent.values.all { it in 5.0..80.0 })
+        assertTrue(stats.memoryPercent.last!! in 50.0..70.0)
+        assertEquals(41.8 / (31.4 + 41.8 + 3.9), stats.disk!!.fraction, 0.001)
+        assertEquals(0.84, stats.load5!!, 0.001)
+        assertTrue(stats.netInKbps.last!! > 0)
+    }
+
+    @Test fun statsWithoutCookieAskForSignIn() = runTest {
+        sessions.save(baseUrl, fake.token) // a session from before cookies were stored
+        val e = runCatching { repo.serverStats() }.exceptionOrNull() as CapRoverException
+        assertEquals(CapRoverException.MONITOR_SIGN_IN, e.status)
+        assertEquals("app session is untouched", fake.token, sessions.session.value?.token)
+    }
+
+    @Test fun rejectedCookieAsksForSignInWithoutSigningOut() = runTest {
+        sessions.save(baseUrl, fake.token, "stale-cookie")
+        val e = runCatching { repo.serverStats() }.exceptionOrNull() as CapRoverException
+        assertEquals(CapRoverException.MONITOR_SIGN_IN, e.status)
+        assertEquals(fake.token, sessions.session.value?.token)
+    }
+
+    @Test fun netDataOffIsReported() = runTest {
+        repo.login(baseUrl, fake.password, null)
+        fake.netDataRunning = false
+        val e = runCatching { repo.serverStats() }.exceptionOrNull() as CapRoverException
+        assertEquals(CapRoverException.MONITOR_OFF, e.status)
     }
 }

@@ -14,7 +14,11 @@ import javax.crypto.KeyGenerator
 import javax.crypto.SecretKey
 import javax.crypto.spec.GCMParameterSpec
 
-data class Session(val baseUrl: String, val token: String)
+/**
+ * [monitorCookie] is the `captainCookieAuth` cookie CapRover sets at login. Its NetData proxy
+ * (`/net-data-monitor/`) only accepts that cookie, not the API token.
+ */
+data class Session(val baseUrl: String, val token: String, val monitorCookie: String? = null)
 
 /**
  * Persists the server address and the CapRover auth token. The token is encrypted with an
@@ -29,16 +33,17 @@ class SessionStore(context: Context, private val cipher: TokenCodec = KeystoreTo
     val lastServer: String
         get() = prefs.getString(KEY_SERVER, null) ?: DEFAULT_SERVER
 
-    fun save(baseUrl: String, token: String) {
+    fun save(baseUrl: String, token: String, monitorCookie: String? = null) {
         prefs.edit {
             putString(KEY_SERVER, baseUrl)
             putString(KEY_TOKEN, cipher.encrypt(token))
+            if (monitorCookie != null) putString(KEY_COOKIE, cipher.encrypt(monitorCookie)) else remove(KEY_COOKIE)
         }
-        _session.value = Session(baseUrl, token)
+        _session.value = Session(baseUrl, token, monitorCookie)
     }
 
     fun clear() {
-        prefs.edit { remove(KEY_TOKEN) }
+        prefs.edit { remove(KEY_TOKEN); remove(KEY_COOKIE) }
         _session.value = null
     }
 
@@ -50,13 +55,15 @@ class SessionStore(context: Context, private val cipher: TokenCodec = KeystoreTo
             prefs.edit { remove(KEY_TOKEN) }
             return null
         }
-        return Session(server, token)
+        val cookie = prefs.getString(KEY_COOKIE, null)?.let { runCatching { cipher.decrypt(it) }.getOrNull() }
+        return Session(server, token, cookie)
     }
 
     companion object {
         const val DEFAULT_SERVER = "https://captain.wardcrew.com"
         private const val KEY_SERVER = "server"
         private const val KEY_TOKEN = "token"
+        private const val KEY_COOKIE = "monitor_cookie"
     }
 }
 

@@ -21,6 +21,7 @@ import androidx.compose.material.icons.Icons
 import androidx.compose.material.icons.automirrored.outlined.OpenInNew
 import androidx.compose.material.icons.outlined.Apps
 import androidx.compose.material.icons.outlined.Hub
+import androidx.compose.material.icons.outlined.Insights
 import androidx.compose.material.icons.outlined.Lan
 import androidx.compose.material.icons.outlined.Language
 import androidx.compose.material.icons.outlined.Layers
@@ -61,6 +62,8 @@ import com.caproverforge.data.CaptainInfo
 import com.caproverforge.data.Format
 import com.caproverforge.data.LoadBalancerInfo
 import com.caproverforge.data.NodeInfo
+import com.caproverforge.data.ServerStats
+import com.caproverforge.data.serverStats
 import com.caproverforge.data.ServerAddress
 import com.caproverforge.data.VersionInfo
 import com.caproverforge.ui.common.LoadingViewModel
@@ -70,9 +73,15 @@ import com.caproverforge.ui.components.PollingEffect
 import com.caproverforge.ui.components.LocalSnackbar
 import com.caproverforge.ui.components.SectionCard
 import com.caproverforge.ui.components.StatusPill
+import com.caproverforge.ui.components.UsageMeter
+import com.caproverforge.ui.components.UsageWarning
+import com.caproverforge.ui.components.formatPercent
+import com.caproverforge.data.CapRoverException
 import com.caproverforge.ui.components.openUrl
 import com.caproverforge.ui.navigation.LocalContainer
 import com.caproverforge.ui.navigation.Navigator
+import com.caproverforge.ui.navigation.MonitoringRoute
+import com.caproverforge.ui.navigation.ServerStatsRoute
 import com.caproverforge.ui.navigation.UpdateRoute
 import com.caproverforge.ui.navigation.containerViewModel
 import com.caproverforge.ui.theme.LocalExtendedColors
@@ -86,6 +95,8 @@ data class DashboardData(
     val nodes: List<NodeInfo>,
     val apps: List<App>,
     val rootDomain: String,
+    /** Null while NetData stats were not requested; failure carries the reason. */
+    val stats: Result<ServerStats>? = null,
 )
 
 class DashboardViewModel(private val repo: CapRoverRepository) : LoadingViewModel<DashboardData>() {
@@ -97,8 +108,9 @@ class DashboardViewModel(private val repo: CapRoverRepository) : LoadingViewMode
         val lb = async { runCatching { repo.loadBalancerInfo() }.getOrNull() }
         val nodes = async { runCatching { repo.nodes() }.getOrDefault(emptyList()) }
         val apps = async { repo.apps() }
+        val stats = async { runCatching { repo.serverStats() } }
         val appsData = apps.await()
-        DashboardData(info.await(), version.await(), lb.await(), nodes.await(), appsData.apps, appsData.rootDomain)
+        DashboardData(info.await(), version.await(), lb.await(), nodes.await(), appsData.apps, appsData.rootDomain, stats.await())
     }
 
     fun poll() = quietReload()
@@ -149,6 +161,9 @@ fun DashboardScreen(navigator: Navigator, onShowApps: () -> Unit) {
         LoadContent(vm.state, vm.refreshing, { vm.refresh(true) }, Modifier.padding(padding)) { data ->
             DashboardContent(
                 data = data,
+                onOpenStats = { navigator.open(ServerStatsRoute) },
+                onOpenMonitoring = { navigator.open(MonitoringRoute) },
+                onSignInAgain = navigator::signOut,
                 onUpdate = { navigator.open(UpdateRoute) },
                 onOpenApp = navigator::openApp,
                 onShowApps = onShowApps,
@@ -161,6 +176,9 @@ fun DashboardScreen(navigator: Navigator, onShowApps: () -> Unit) {
 @Composable
 private fun DashboardContent(
     data: DashboardData,
+    onOpenStats: () -> Unit,
+    onOpenMonitoring: () -> Unit,
+    onSignInAgain: () -> Unit,
     onUpdate: () -> Unit,
     onOpenApp: (String) -> Unit,
     onShowApps: () -> Unit,
@@ -224,6 +242,10 @@ private fun DashboardContent(
                     Modifier.weight(1f),
                 )
             }
+        }
+
+        data.stats?.let { result ->
+            item { ServerHealthCard(result, onOpenStats, onOpenMonitoring, onSignInAgain) }
         }
 
         if (building.isNotEmpty()) {
@@ -390,5 +412,56 @@ private fun AppLine(title: String, subtitle: String, onClick: () -> Unit, traili
             Text(subtitle, style = MaterialTheme.typography.bodySmall, color = MaterialTheme.colorScheme.onSurfaceVariant)
         }
         trailing()
+    }
+}
+
+@Composable
+private fun ServerHealthCard(
+    result: Result<ServerStats>,
+    onOpenStats: () -> Unit,
+    onOpenMonitoring: () -> Unit,
+    onSignInAgain: () -> Unit,
+) {
+    val stats = result.getOrNull()
+    val status = (result.exceptionOrNull() as? CapRoverException)?.status
+    SectionCard(
+        "Server health",
+        icon = Icons.Outlined.Insights,
+        subtitle = stats?.let { "Live from NetData" },
+        trailing = { if (stats != null) TextButton(onClick = onOpenStats) { Text("Details") } },
+    ) {
+        when {
+            stats != null -> {
+                HealthRow("CPU", stats.cpuPercent.last?.div(100))
+                HealthRow("Memory", stats.memoryPercent.last?.div(100))
+                stats.disk?.let { HealthRow("Disk", it.fraction) }
+            }
+            status == CapRoverException.MONITOR_OFF -> {
+                Text("Turn on NetData monitoring to see CPU, memory, network and disk usage here.", style = MaterialTheme.typography.bodyMedium)
+                TextButton(onClick = onOpenMonitoring, contentPadding = PaddingValues(0.dp)) { Text("Set up monitoring") }
+            }
+            status == CapRoverException.MONITOR_SIGN_IN -> {
+                Text("Sign out and back in once so the app can read NetData stats.", style = MaterialTheme.typography.bodyMedium)
+                TextButton(onClick = onSignInAgain, contentPadding = PaddingValues(0.dp)) { Text("Sign out and sign in") }
+            }
+            else -> Text(
+                "Stats unavailable: ${result.exceptionOrNull()?.message ?: "unknown error"}",
+                style = MaterialTheme.typography.bodyMedium,
+                color = MaterialTheme.colorScheme.onSurfaceVariant,
+            )
+        }
+    }
+}
+
+@Composable
+private fun HealthRow(label: String, fraction: Double?) {
+    Column(Modifier.padding(vertical = 6.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Text(label, Modifier.weight(1f), style = MaterialTheme.typography.bodyLarge)
+            Text(fraction?.let { formatPercent(it * 100) } ?: "–", style = MaterialTheme.typography.titleMedium)
+        }
+        Spacer(Modifier.height(6.dp))
+        UsageMeter(fraction ?: 0.0)
+        if (fraction != null) UsageWarning(fraction, label)
     }
 }

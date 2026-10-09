@@ -179,7 +179,7 @@ class MonitoringViewModel(private val repo: CapRoverRepository) : LoadingViewMod
 }
 
 @Composable
-fun MonitoringScreen(onBack: () -> Unit) {
+fun MonitoringScreen(onBack: () -> Unit, onOpenStats: () -> Unit = {}) {
     val vm = containerViewModel { MonitoringViewModel(it.repository) }
     val context = LocalContext.current
     val ext = LocalExtendedColors.current
@@ -200,11 +200,14 @@ fun MonitoringScreen(onBack: () -> Unit) {
                 enabled = !vm.busy,
                 onCheckedChange = vm::setEnabled,
             )
-            if (enabled && !url.isNullOrBlank()) {
+            if (enabled) {
                 Spacer(Modifier.height(8.dp))
-                Button(onClick = { openUrl(context, if (url.startsWith("http")) url else "https://$url") }) {
+                Button(onClick = onOpenStats) { Text("View live stats") }
+            }
+            if (enabled && !url.isNullOrBlank()) {
+                OutlinedButton(onClick = { openUrl(context, if (url.startsWith("http")) url else "https://$url") }) {
                     Icon(Icons.AutoMirrored.Outlined.OpenInNew, null)
-                    Text("  Open NetData")
+                    Text("  Full NetData dashboard")
                 }
                 Text(
                     "Opens in your browser. You may need to sign in to the CapRover dashboard there first.",
