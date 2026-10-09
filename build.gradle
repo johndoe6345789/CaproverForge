@@ -1,21 +1,33 @@
 // Top-level build file where you can add configuration options common to all sub-projects/modules.
 buildscript {
+    ext.kotlin_version = '2.4.20'  // newest release on the Central mirror below
     repositories {
         google()
+        // Google's mirror of Maven Central: avoids Central's rate limits (HTTP 429). Anything it
+        // doesn't have yet (404) falls through to Maven Central itself.
+        maven { url = 'https://maven-central.storage-download.googleapis.com/maven2/' }
         mavenCentral()
     }
     dependencies {
-        classpath 'com.android.tools.build:gradle:7.4.0'
+        classpath 'com.android.tools.build:gradle:9.4.1'
+        // AGP 9 has built-in Kotlin support; pinning KGP keeps it in step with the compose/serialization plugins.
+        classpath "org.jetbrains.kotlin:kotlin-gradle-plugin:$kotlin_version"
+        classpath "org.jetbrains.kotlin:compose-compiler-gradle-plugin:$kotlin_version"
+        classpath "org.jetbrains.kotlin:kotlin-serialization:$kotlin_version"
+        classpath 'io.github.takahirom.roborazzi:roborazzi-gradle-plugin:1.76.0'
     }
 }
 
 allprojects {
     repositories {
         google()
+        // Google's mirror of Maven Central: avoids Central's rate limits (HTTP 429). Anything it
+        // doesn't have yet (404) falls through to Maven Central itself.
+        maven { url = 'https://maven-central.storage-download.googleapis.com/maven2/' }
         mavenCentral()
     }
 }
 
-task clean(type: Delete) {
-    delete rootProject.buildDir
+tasks.register('clean', Delete) {
+    delete rootProject.layout.buildDirectory
 }

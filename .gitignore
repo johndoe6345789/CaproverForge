@@ -51,3 +51,5 @@ local.properties
 
 # Android Profiling
 *.hprof
+# Roborazzi screenshots recorded by the UI tests (published as a CI artifact)
+app/screenshots/

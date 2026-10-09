@@ -1,6 +1,9 @@
 pluginManagement {
     repositories {
         google()
+        // Google's mirror of Maven Central: avoids Central's rate limits (HTTP 429). Anything it
+        // doesn't have yet (404) falls through to Maven Central itself.
+        maven { url = 'https://maven-central.storage-download.googleapis.com/maven2/' }
         mavenCentral()
         gradlePluginPortal()
     }
